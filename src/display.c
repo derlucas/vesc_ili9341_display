@@ -7,9 +7,17 @@
 #include "can.h"
 #include "vesc.h"
 
-static uint8_t c = 0;
+#define BUFFER_LENGTH	5
+
 vesc_calc_data calc_data_last;
-mc_values can_values_last;
+mc_values can_values_last = {
+	-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1,-1, FAULT_CODE_NONE,
+};
+
+uint8_t power_buffer[BUFFER_LENGTH];
+uint8_t power_ptr;
+uint16_t power;
+uint16_t power_last = 1;
 
 // forward declarations
 void display_homescreen();
@@ -20,6 +28,7 @@ void display_sevenseg(uint8_t num, uint16_t x, uint16_t y, uint32_t foreground) 
 	snprintf(buffer, sizeof(buffer), "%2d", num);
 	ILI9341_Puts(x, y, buffer, &Font_7seg, foreground, ILI9341_COLOR_BLACK);
 }
+
 void display_sevenseg4(uint16_t num, uint16_t x, uint16_t y, uint32_t foreground) {
 	static char buffer[8];
 	snprintf(buffer, sizeof(buffer), "%4d", num);
@@ -61,8 +70,6 @@ void display_bar(uint16_t y, float max, float current) {
     ILI9341_DrawFilledRectangle(width, y + 27, 320, y + 30, ILI9341_COLOR_BLACK);
 }
 
-
-
 void display() {
     static timer_ticks_t display_ticks = 0;
 
@@ -77,8 +84,6 @@ void display() {
 void display_init() {
     ILI9341_Init();
     ILI9341_Rotate(ILI9341_Orientation_Landscape_2);
-
-
 }
 
 void display_homescreen() {
@@ -109,17 +114,15 @@ void display_homescreen() {
 		display_float(can_values.amp_hours_charged * 1000, "%5d.%1dmAh", 2, 42, ILI9341_COLOR_GREEN2);
 	}
 
-	if(fabsf(calc_data.power_in - calc_data_last.power_in) > 0.1) {
-		display_sevenseg4(fabsf(calc_data.power_in), 320-4*32-17, 190, ILI9341_COLOR_WHITE);
+	if(calc_data.power_in_filtered != calc_data_last.power_in_filtered) {
+		display_sevenseg4(calc_data.power_in_filtered, 320-4*32-17, 190, ILI9341_COLOR_WHITE);
 		ILI9341_Puts(320-14, 190+50-18, "W", &Font_11x18, ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK);
 	}
-
 
 	if(fabsf(calc_data.speed_kmh - calc_data_last.speed_kmh) > 0.5) {
 		display_sevenseg(fabsf(calc_data.speed_kmh), 2, 190, ILI9341_COLOR_WHITE);
 		ILI9341_Puts(2+66, 190+50-18, "km/h", &Font_11x18, ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK);
 	}
-
 
 	calc_data_last = calc_data;
 	can_values_last = can_values;

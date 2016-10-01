@@ -17,9 +17,7 @@ static int rx_frame_read;
 static int rx_frame_write;
 static uint8_t rx_buffer[RX_BUFFER_SIZE];
 mc_configuration can_mcconf;
-volatile mc_values can_values = {
-	-1.0, -1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0, -1,-1, FAULT_CODE_NONE,
-};
+volatile mc_values can_values; // = { -1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1,-1, FAULT_CODE_NONE, };
 
 void can_init() {
     GPIO_InitTypeDef GPIO_InitStructure;
@@ -79,6 +77,7 @@ void can_init() {
     CAN_FilterInit(&CAN_FilterInitStructure);
 }
 
+// write received packages into a ring buffer to quickly free the Interrupt/CAN stack in STM32
 void USB_LP_CAN1_RX0_IRQHandler(void) {
     CanRxMsg rxMessage;
     CAN_Receive(CAN1, CAN_FIFO0, &rxMessage);
@@ -87,7 +86,6 @@ void USB_LP_CAN1_RX0_IRQHandler(void) {
     if (rx_frame_write == RX_FRAMES_SIZE) {
         rx_frame_write = 0;
     }
-
 }
 
 void commands_process_packet(uint8_t *data, unsigned int len) {
@@ -108,11 +106,12 @@ void commands_process_packet(uint8_t *data, unsigned int len) {
 
 		ind = 0;
 		can_values.temp_mos1 = buffer_get_float16(data, 10.0, &ind);
-		can_values.temp_mos2 = buffer_get_float16(data, 10.0, &ind);
+		/*can_values.temp_mos2 = buffer_get_float16(data, 10.0, &ind);
 		can_values.temp_mos3 = buffer_get_float16(data, 10.0, &ind);
 		can_values.temp_mos4 = buffer_get_float16(data, 10.0, &ind);
 		can_values.temp_mos5 = buffer_get_float16(data, 10.0, &ind);
-		can_values.temp_mos6 = buffer_get_float16(data, 10.0, &ind);
+		can_values.temp_mos6 = buffer_get_float16(data, 10.0, &ind);*/
+		ind+=10;
 		can_values.temp_pcb = buffer_get_float16(data, 10.0, &ind);
 		can_values.current_motor = buffer_get_float32(data, 100.0, &ind);
 		can_values.current_in = buffer_get_float32(data, 100.0, &ind);
@@ -131,12 +130,7 @@ void commands_process_packet(uint8_t *data, unsigned int len) {
 		break;
 
 	case COMM_GET_MCCONF:
-		ind = 0;
-		can_mcconf.pwm_mode = (mc_pwm_mode)data[ind++];
-		can_mcconf.comm_mode = (mc_comm_mode)data[ind++];
-		can_mcconf.motor_type = (mc_motor_type)data[ind++];
-		can_mcconf.sensor_mode = (mc_sensor_mode)data[ind++];
-
+		ind = 4;
 		can_mcconf.l_current_max = buffer_get_float32(data, 1000.0, &ind);
 		can_mcconf.l_current_min = buffer_get_float32(data, 1000.0, &ind);
 		can_mcconf.l_in_current_max = buffer_get_float32(data, 1000.0, &ind);
@@ -159,6 +153,8 @@ void commands_process_packet(uint8_t *data, unsigned int len) {
 		can_mcconf.l_min_duty = buffer_get_float32(data, 1000000.0, &ind);
 		can_mcconf.l_max_duty = buffer_get_float32(data, 1000000.0, &ind);
 
+
+
 		can_mcconf.sl_min_erpm = buffer_get_float32(data, 1000.0, &ind);
 		can_mcconf.sl_min_erpm_cycle_int_limit = buffer_get_float32(data, 1000.0, &ind);
 		can_mcconf.sl_max_fullbreak_current_dir_change = buffer_get_float32(data, 1000.0, &ind);
@@ -167,44 +163,12 @@ void commands_process_packet(uint8_t *data, unsigned int len) {
 		can_mcconf.sl_cycle_int_rpm_br = buffer_get_float32(data, 1000.0, &ind);
 		can_mcconf.sl_bemf_coupling_k = buffer_get_float32(data, 1000.0, &ind);
 
-		memcpy(can_mcconf.hall_table, data + ind, 8);
 		ind += 8;
 		can_mcconf.hall_sl_erpm = buffer_get_float32(data, 1000.0, &ind);
 
-		can_mcconf.foc_current_kp = buffer_get_float32(data, 1e5, &ind);
-		can_mcconf.foc_current_ki = buffer_get_float32(data, 1e5, &ind);
-		can_mcconf.foc_f_sw = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_dt_us = buffer_get_float32(data, 1e6, &ind);
-		can_mcconf.foc_encoder_inverted = data[ind++];
-		can_mcconf.foc_encoder_offset = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_encoder_ratio = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_sensor_mode = (mc_foc_sensor_mode)data[ind++];
-		can_mcconf.foc_pll_kp = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_pll_ki = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_motor_l = buffer_get_float32(data, 1e8, &ind);
-		can_mcconf.foc_motor_r = buffer_get_float32(data, 1e5, &ind);
-		can_mcconf.foc_motor_flux_linkage = buffer_get_float32(data, 1e5, &ind);
-		can_mcconf.foc_observer_gain = buffer_get_float32(data, 1e0, &ind);
-		can_mcconf.foc_duty_dowmramp_kp = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_duty_dowmramp_ki = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_openloop_rpm = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_sl_openloop_hyst = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_sl_openloop_time = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_sl_d_current_duty = buffer_get_float32(data, 1e3, &ind);
-		can_mcconf.foc_sl_d_current_factor = buffer_get_float32(data, 1e3, &ind);
-		memcpy(can_mcconf.foc_hall_table, data + ind, 8);
+		ind += 78;
 		ind += 8;
-		can_mcconf.foc_sl_erpm = buffer_get_float32(data, 1000.0, &ind);
-
-		can_mcconf.s_pid_kp = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.s_pid_ki = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.s_pid_kd = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.s_pid_min_erpm = buffer_get_float32(data, 1000.0, &ind);
-
-		can_mcconf.p_pid_kp = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.p_pid_ki = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.p_pid_kd = buffer_get_float32(data, 1000000.0, &ind);
-		can_mcconf.p_pid_ang_div = buffer_get_float32(data, 1e5, &ind);
+		ind += 36;
 
 		can_mcconf.cc_startup_boost_duty = buffer_get_float32(data, 1000000.0, &ind);
 		can_mcconf.cc_min_current = buffer_get_float32(data, 1000.0, &ind);
@@ -216,7 +180,7 @@ void commands_process_packet(uint8_t *data, unsigned int len) {
 		can_mcconf.m_duty_ramp_step_rpm_lim = buffer_get_float32(data, 1000000.0, &ind);
 		can_mcconf.m_current_backoff_gain = buffer_get_float32(data, 1000000.0, &ind);
 		can_mcconf.m_encoder_counts = buffer_get_uint32(data, &ind);
-		can_mcconf.m_sensor_port_mode = (sensor_port_mode)data[ind++];
+		ind++;
 		break;
 	/*
 	case COMM_GET_DECODED_PPM:
